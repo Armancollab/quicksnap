@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Screen Recorder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'Segoe MDL2 Assets';
+            src: url('https://db.onlinewebfonts.com/t/3c1a063c72c20227ea2034f4c14e9c46.woff2') format('woff2');
+        }
+    </style>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">
+                <span class="segoe-icon app-icon">&#xE714;</span>
+                QuickSnap Screen Recorder
+            </div>
+        </div>
+    </div>
+
+    <div class="titlebar">
+        <div class="titlebar-title">
+            <span class="segoe-icon app-icon">&#xE714;</span>
+            <span>QuickSnap Screen Recorder</span>
+        </div>
+        <div class="window-controls">
+            <button class="control-button" id="minimize-to-tray" title="Minimize to Tray">
+                <span class="segoe-icon minimize-tray-icon">&#xE73F;</span>
+            </button>
+            <button class="control-button" id="minimize-window" title="Minimize">
+                <span class="segoe-icon">&#xE921;</span>
+            </button>
+            <button class="control-button" id="maximize-window" title="Maximize">
+                <span class="segoe-icon">&#xE922;</span>
+            </button>
+            <button class="control-button close" id="close-window" title="Close">
+                <span class="segoe-icon">&#xE8BB;</span>
+            </button>
+        </div>
+        <div class="custom-menu">
+            <div class="menu-item" onclick="handleMenuClick('file', event)">File</div>
+            <div class="menu-item" onclick="handleMenuClick('help', event)">Help</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="notification" class="notification"></div>
+
+        <div id="countdown-overlay" class="countdown-overlay">
+            <div class="countdown-number"></div>
+        </div>
+
+        <div id="about-dialog" class="dialog-overlay">
+            <div class="dialog-content">
+                <div class="dialog-header">
+                    <h2>About Developer</h2>
+                    <button class="dialog-close" onclick="closeAboutDialog()">
+                        <span class="segoe-icon">&#xE711;</span>
+                    </button>
+                </div>
+                <div class="dialog-body">
+                    <div class="app-info">
+                        <h3>QuickSnap Screen Recorder</h3>
+                        <p class="version">Version 1.0.0</p>
+                    </div>
+                    <div class="developer-info">
+                        <h4>Developer</h4>
+                        <p>Arman Mustamandyar</p>
+                        <div class="contact-info">
+                            <div class="contact-item">
+                                <span class="segoe-icon">&#xE715;</span>
+                                <a href="mailto:arman.mustamandyar@auaf.edu.af">arman.mustamandyar@auaf.edu.af</a>
+                            </div>
+                            <div class="contact-item">
+                                <span class="segoe-icon">&#xED1D;</span>
+                                <a href="#" onclick="openGitHub()">github.com/Armancollab</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav-tabs">
+            <div class="nav-tab active" data-tab="recorder">
+                <span class="segoe-icon">&#xE714;</span>
+                Recorder
+            </div>
+            <div class="nav-tab" data-tab="settings">
+                <span class="segoe-icon">&#xE713;</span>
+                Settings
+            </div>
+        </div>
+
+        <div id="recorder-panel" class="glass-panel">
+            <div class="controls">
+                <button id="startBtn" class="btn">
+                    <span class="segoe-icon">&#xE7C8;</span>
+                    Start Recording
+                </button>
+                <button id="pauseBtn" class="btn secondary" disabled>
+                    <span class="segoe-icon">&#xE769;</span>
+                    Pause
+                </button>
+                <button id="stopBtn" class="btn secondary" disabled>
+                    <span class="segoe-icon">&#xE71A;</span>
+                    Stop Recording
+                </button>
+            </div>
+            <div class="status">
+                <span id="timer" class="timer">00:00</span>
+            </div>
+            <video id="preview" autoplay muted></video>
+        </div>
+
+        <div id="settings-panel" class="glass-panel settings-panel">
+            <div class="settings-group">
+                <h3>Recording Settings</h3>
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="segoe-icon">&#xE916;</span>
+                        <span>Countdown Timer</span>
+                    </div>
+                    <div class="countdown-control">
+                        <button class="btn secondary countdown-btn" id="decrementCountdown">
+                            <span class="segoe-icon">&#xE738;</span>
+                        </button>
+                        <span id="countdownValue">3s</span>
+                        <button class="btn secondary countdown-btn" id="incrementCountdown">
+                            <span class="segoe-icon">&#xE710;</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="segoe-icon">&#xE767;</span>
+                        <span>Record System Audio</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="systemAudioToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="segoe-icon">&#xE720;</span>
+                        <span>Record Microphone</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="microphoneToggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="segoe-icon">&#xE714;</span>
+                        <span>Record Video</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="videoToggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <h3>Quality Settings</h3>
+                <div class="setting-item quality-setting">
+                    <div class="setting-label">
+                        <span class="segoe-icon">&#xE9E9;</span>
+                        <span>Video Quality</span>
+                    </div>
+                    <div class="quality-control">
+                        <input type="range" id="qualitySlider" min="1" max="100" value="80">
+                        <span id="qualityValue">80%</span>
+                    </div>
+                </div>
+                <div class="setting-item quality-setting">
+                    <div class="setting-label">
+                        <span class="segoe-icon">&#xEC4A;</span>
+                        <span>Frame Rate</span>
+                    </div>
+                    <div class="quality-control">
+                        <input type="range" id="fpsSlider" min="1" max="60" value="30">
+                        <span id="fpsValue">30 FPS</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <h3>Save Location</h3>
+                <div class="setting-item save-location">
+                    <div class="setting-label">
+                        <span class="segoe-icon">&#xE8B7;</span>
+                        <span>Save Path</span>
+                    </div>
+                    <div class="save-path-controls">
+                        <input type="text" id="savePath" readonly>
+                        <button id="choosePath" class="btn secondary">
+                            <span class="segoe-icon">&#xE838;</span>
+                            Choose
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="renderer.js"></script>
+</body>
+
+</html>

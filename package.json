@@ -1,0 +1,57 @@
+{
+  "name": "quicksnap",
+  "version": "1.0.0",
+  "description": "A screen recording application built with Electron",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "electron-builder build",
+    "deploy": "electron-builder build --win --publish always"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Armancollab/quicksnap.git"
+  },
+  "keywords": [
+    "screen-recorder",
+    "electron",
+    "desktop-app"
+  ],
+  "author": "Arman Mustamandyar <arman.mustamandyar@auaf.edu.af>",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.1.7",
+    "fluent-ffmpeg": "^2.1.3"
+  },
+  "build": {
+    "appId": "com.armancollab.quicksnap",
+    "productName": "QuickSnap",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Armancollab",
+      "repo": "quicksnap",
+      "private": false
+    }
+  }
+}
