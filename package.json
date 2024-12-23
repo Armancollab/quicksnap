@@ -1,10 +1,10 @@
 {
   "name": "quicksnap",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A screen recording application built with Electron",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "electron . --disable-gpu-cache",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "electron-builder build",
     "deploy": "electron-builder build --win --publish always"

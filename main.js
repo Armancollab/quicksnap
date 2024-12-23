@@ -8,6 +8,7 @@ const {
   shell,
   nativeTheme,
   Tray,
+  session,
 } = require("electron");
 const path = require("path");
 const Store = require("electron-store");
@@ -21,53 +22,82 @@ let tray = null;
 let isRecording = false;
 
 function createTray() {
-  tray = new Tray(path.join(__dirname, "build/tray.png"));
-  updateTrayIcon(false);
+  try {
+    const trayIconPath = path.resolve(__dirname, "build", "tray.ico");
+    const trayRecordingIconPath = path.resolve(
+      __dirname,
+      "build",
+      "tray-recording.ico"
+    );
 
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: "Open Recordings Folder",
-      click: () => {
-        const recordingsPath = store.get(
-          "savePath",
-          path.join(os.homedir(), "Videos")
-        );
-        shell.openPath(recordingsPath);
+    // Verify that the icon files exist
+    if (!fs.existsSync(trayIconPath) || !fs.existsSync(trayRecordingIconPath)) {
+      console.error("Tray icons not found:", {
+        trayIconPath,
+        trayRecordingIconPath,
+      });
+      return;
+    }
+
+    tray = new Tray(trayIconPath);
+    updateTrayIcon(false);
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: "Open Recordings Folder",
+        click: () => {
+          const recordingsPath = store.get(
+            "savePath",
+            path.join(os.homedir(), "Videos")
+          );
+          shell.openPath(recordingsPath);
+        },
       },
-    },
-    {
-      label: "Show/Hide Window",
-      click: () => {
-        mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+      {
+        label: "Show/Hide Window",
+        click: () => {
+          mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+        },
       },
-    },
-    { type: "separator" },
-    {
-      label: "Quit",
-      click: () => app.quit(),
-    },
-  ]);
+      { type: "separator" },
+      {
+        label: "Quit",
+        click: () => app.quit(),
+      },
+    ]);
 
-  tray.setToolTip("QuickSnap Screen Recorder");
-  tray.setContextMenu(contextMenu);
+    tray.setToolTip("QuickSnap Screen Recorder");
+    tray.setContextMenu(contextMenu);
 
-  tray.on("click", () => {
-    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-  });
+    tray.on("click", () => {
+      mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+    });
+  } catch (error) {
+    console.error("Error creating tray:", error);
+  }
 }
 
 function updateTrayIcon(recording) {
-  isRecording = recording;
-  if (tray) {
-    tray.setImage(
-      path.join(
+  try {
+    isRecording = recording;
+    if (tray) {
+      const iconPath = path.resolve(
         __dirname,
-        recording ? "build/tray-recording.png" : "build/tray.png"
-      )
-    );
-    tray.setToolTip(
-      recording ? "Recording in progress..." : "QuickSnap Screen Recorder"
-    );
+        "build",
+        recording ? "tray-recording.ico" : "tray.ico"
+      );
+
+      if (fs.existsSync(iconPath)) {
+        tray.setImage(iconPath);
+        tray.setToolTip(
+          recording ? "Recording in progress..." : "QuickSnap Screen Recorder"
+        );
+      } else {
+        console.error("Tray icon not found:", iconPath);
+      }
+    }
+  } catch (error) {
+    console.error("Error updating tray icon:", error);
   }
 }
 
@@ -225,8 +255,25 @@ function createWindow() {
 
 // Modify the app ready handler
 app.whenReady().then(() => {
+  // Configure session
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    callback({ requestHeaders: { ...details.requestHeaders } });
+  });
+
   createWindow();
   createTray();
+});
+
+// Add session cleanup on quit
+app.on("quit", () => {
+  try {
+    // Clear session data
+    session.defaultSession.clearCache().catch((error) => {
+      console.error("Error clearing cache:", error);
+    });
+  } catch (error) {
+    console.error("Error cleaning up session:", error);
+  }
 });
 
 // Modify the app quit handler
