@@ -1,6 +1,6 @@
 {
   "name": "quicksnap",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A screen recording application built with Electron",
   "main": "main.js",
   "scripts": {
@@ -45,7 +45,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "differentialPackage": true
     },
     "publish": {
       "provider": "github",

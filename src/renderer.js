@@ -57,6 +57,61 @@ const aboutDialog = document.getElementById("about-dialog");
 // Add loading screen element
 const loadingScreen = document.getElementById("loading-screen");
 
+// Add recording mode elements
+const recordingModeBtn = document.getElementById("recordingModeBtn");
+const recordingModeText = document.getElementById("recordingModeText");
+let recordingMode = null; // 'fullscreen' or 'window'
+
+// Add region selection elements
+// const regionSelectionOverlay = document.getElementById("region-selection-overlay");
+// const regionSelectionBox = regionSelectionOverlay.querySelector(".region-selection-box");
+// const regionSelectionSize = regionSelectionOverlay.querySelector(".region-selection-size");
+let selectedRegion = null;
+let isSelecting = false;
+let startPoint = { x: 0, y: 0 };
+
+// Add update progress handling
+let updateProgressOverlay;
+
+function createUpdateProgressOverlay() {
+    updateProgressOverlay = document.createElement('div');
+    updateProgressOverlay.className = 'update-progress-overlay';
+    updateProgressOverlay.innerHTML = `
+        <div class="update-progress-content">
+            <div class="update-progress-spinner"></div>
+            <div class="update-progress-text">
+                <div>Installing update, please wait...</div>
+                <div class="update-progress-percentage">0%</div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(updateProgressOverlay);
+}
+
+// Create the overlay when the app starts
+document.addEventListener('DOMContentLoaded', () => {
+    createUpdateProgressOverlay();
+});
+
+// Listen for update progress
+ipcRenderer.on('update-progress', (event, percent) => {
+    if (!updateProgressOverlay) {
+        createUpdateProgressOverlay();
+    }
+    updateProgressOverlay.style.display = 'flex';
+    const percentageElement = updateProgressOverlay.querySelector('.update-progress-percentage');
+    if (percentageElement) {
+        percentageElement.textContent = `${Math.round(percent)}%`;
+    }
+});
+
+// Hide progress overlay when update is downloaded
+ipcRenderer.on('update-downloaded', () => {
+    if (updateProgressOverlay) {
+        updateProgressOverlay.style.display = 'none';
+    }
+});
+
 // Function to hide loading screen
 function hideLoadingScreen() {
   loadingScreen.classList.add("fade-out");
@@ -89,7 +144,6 @@ prefersDark.addListener((e) => {
 
 // Function to handle theme changes
 function handleThemeChange(isDark) {
-  // You can add additional theme-specific adjustments here if needed
   console.log(`Theme changed to ${isDark ? "dark" : "light"} mode`);
 }
 
@@ -162,164 +216,272 @@ function updateTimer() {
   timer.textContent = `${minutes}:${seconds}`;
 }
 
-// Get screen stream with system audio
-async function getScreenStream() {
-  try {
-    const sources = await ipcRenderer.invoke("get-sources");
-    const entireScreen = sources.find(
-      (source) =>
-        source.name === "Entire Screen" || source.id.startsWith("screen:")
-    );
+// Add recording mode functions
+function toggleDropdown() {
+    recordingModeBtn.parentElement.classList.toggle("active");
+}
 
-    if (!entireScreen) {
-      throw new Error("No screen source found");
-    }
-
-    const constraints = {
-      audio: systemAudioToggle.checked
-        ? {
-            mandatory: {
-              chromeMediaSource: "desktop",
-            },
-            optional: [],
-          }
-        : false,
-      video: {
-        mandatory: {
-          chromeMediaSource: "desktop",
-          chromeMediaSourceId: entireScreen.id,
-          maxFrameRate: parseInt(fpsSlider.value),
-        },
-      },
-    };
-
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    return stream;
-  } catch (error) {
-    console.error("Error getting screen stream:", error);
-    throw error;
-  }
+function closeDropdown() {
+    recordingModeBtn.parentElement.classList.remove("active");
 }
 
 // Get audio stream (microphone only)
 async function getAudioStream() {
-  if (!microphoneToggle.checked) return null;
+    if (!microphoneToggle.checked) return null;
 
-  try {
-    const constraints = {
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        sampleRate: 44100,
-      },
-      video: false,
-    };
+    try {
+        const constraints = {
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                sampleRate: 44100,
+            },
+            video: false,
+        };
 
-    return await navigator.mediaDevices.getUserMedia(constraints);
-  } catch (error) {
-    console.error("Error getting audio stream:", error);
-    return null;
-  }
+        return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+        console.error("Error getting audio stream:", error);
+        return null;
+    }
 }
 
-// Start recording
+// Remove old region selection elements and functions since we're using a separate window
+function showRegionSelection() {
+    ipcRenderer.send('show-region-selector');
+}
+
+// Add region selection handler
+ipcRenderer.on('region-selected', (event, region) => {
+    selectedRegion = region;
+    updateRecordingModeInfo();
+});
+
+// Update getScreenStream function to handle region recording properly
+async function getScreenStream() {
+    try {
+        if (recordingMode === "window" && !selectedSource) {
+            showWindowSelectionDialog();
+            return null;
+        }
+
+        if (recordingMode === "region" && !selectedRegion) {
+            showRegionSelection();
+            return null;
+        }
+
+        let sourceId;
+        if (recordingMode === "fullscreen") {
+            const sources = await ipcRenderer.invoke("get-sources");
+            const screen = sources.find(
+                (source) => source.name === "Entire Screen" || source.id.startsWith("screen:")
+            );
+            if (!screen) throw new Error("No screen source found");
+            sourceId = screen.id;
+        } else if (recordingMode === "window") {
+            sourceId = selectedSource.id;
+        } else {
+            // For region mode, capture the entire screen
+            const sources = await ipcRenderer.invoke("get-sources");
+            const screen = sources.find(
+                (source) => source.name === "Entire Screen" || source.id.startsWith("screen:")
+            );
+            if (!screen) throw new Error("No screen source found");
+            sourceId = screen.id;
+        }
+
+        const constraints = {
+            audio: systemAudioToggle.checked
+                ? {
+                    mandatory: {
+                        chromeMediaSource: "desktop",
+                    },
+                    optional: [],
+                }
+                : false,
+            video: {
+                mandatory: {
+                    chromeMediaSource: "desktop",
+                    chromeMediaSourceId: sourceId,
+                    maxFrameRate: parseInt(fpsSlider.value),
+                },
+            },
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        // Apply region cropping if in region mode
+        if (recordingMode === "region" && selectedRegion) {
+            const canvas = document.createElement("canvas");
+            canvas.width = selectedRegion.width;
+            canvas.height = selectedRegion.height;
+            const ctx = canvas.getContext("2d");
+
+            const videoTrack = stream.getVideoTracks()[0];
+            const settings = videoTrack.getSettings();
+            const videoElement = document.createElement("video");
+            videoElement.srcObject = new MediaStream([videoTrack]);
+            await videoElement.play();
+
+            // Get display metrics from main process
+            const displayMetrics = await ipcRenderer.invoke("get-display-metrics");
+
+            // Calculate scaling factors
+            const scaleX = settings.width / displayMetrics.width;
+            const scaleY = settings.height / displayMetrics.height;
+
+            // Scale the region coordinates
+            const scaledRegion = {
+                x: selectedRegion.x * scaleX,
+                y: selectedRegion.y * scaleY,
+                width: selectedRegion.width * scaleX,
+                height: selectedRegion.height * scaleY
+            };
+
+            const cropStream = canvas.captureStream(parseInt(fpsSlider.value));
+            const cropTrack = cropStream.getVideoTracks()[0];
+
+            // Draw the cropped region to the canvas
+            function drawCroppedFrame() {
+                ctx.drawImage(
+                    videoElement,
+                    scaledRegion.x,
+                    scaledRegion.y,
+                    scaledRegion.width,
+                    scaledRegion.height,
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height
+                );
+                requestAnimationFrame(drawCroppedFrame);
+            }
+            drawCroppedFrame();
+
+            // Create a new stream with the cropped video and original audio
+            const tracks = [
+                cropTrack,
+                ...(stream.getAudioTracks() || [])
+            ];
+            return new MediaStream(tracks);
+        }
+
+        return stream;
+    } catch (error) {
+        console.error("Error getting screen stream:", error);
+        throw error;
+    }
+}
+
+// Modify startRecording to check for recording mode
 async function startRecording() {
-  try {
-    let screenStream = null;
-    let micStream = null;
-
-    if (videoToggle.checked || systemAudioToggle.checked) {
-      screenStream = await getScreenStream();
+    if (!recordingMode) {
+        showNotification("Please select a recording mode first", "error");
+        return;
     }
 
-    if (microphoneToggle.checked) {
-      micStream = await getAudioStream();
+    try {
+        let screenStream = null;
+        let micStream = null;
+
+        if (videoToggle.checked || systemAudioToggle.checked) {
+            if (recordingMode === "window" && !selectedSource) {
+                showWindowSelectionDialog();
+                return;
+            }
+            screenStream = await getScreenStream();
+            if (!screenStream) return;
+        }
+
+        if (microphoneToggle.checked) {
+            micStream = await getAudioStream();
+        }
+
+        if (!screenStream && !micStream) {
+            throw new Error("No media sources selected");
+        }
+
+        // Show countdown if enabled
+        if (countdownSeconds > 0) {
+            await showCountdown();
+        }
+
+        const tracks = [
+            ...(screenStream ? screenStream.getTracks() : []),
+            ...(micStream ? micStream.getTracks() : []),
+        ];
+
+        stream = new MediaStream(tracks);
+        preview.srcObject = stream;
+
+        // Calculate bitrate based on quality setting
+        const qualityMultiplier = parseInt(qualitySlider.value) / 100;
+        const videoBitsPerSecond = Math.floor(2500000 * qualityMultiplier);
+        const audioBitsPerSecond = Math.floor(192000 * qualityMultiplier);
+
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(stream, {
+            videoBitsPerSecond,
+            audioBitsPerSecond,
+        });
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                recordedChunks.push(e.data);
+            }
+        };
+
+        mediaRecorder.onstart = () => {
+            ipcRenderer.send("recording-status-changed", true);
+            closeWindowSelectionDialog();
+        };
+
+        mediaRecorder.onstop = async () => {
+            ipcRenderer.send("recording-status-changed", false);
+            const blob = new Blob(recordedChunks, {
+                type: "video/mp4",
+            });
+
+            const buffer = Buffer.from(await blob.arrayBuffer());
+            const filePath = await ipcRenderer.invoke("save-file", buffer);
+
+            if (filePath) {
+                store.set("lastRecordingPath", filePath);
+                showNotification("Recording saved successfully!");
+            }
+
+            stream.getTracks().forEach((track) => track.stop());
+            preview.srcObject = null;
+            recordedChunks = [];
+            resetControls();
+        };
+
+        // Request data every 100ms when paused to ensure we don't lose frames
+        mediaRecorder.onpause = () => {
+            console.log("MediaRecorder paused");
+            mediaRecorder.requestData();
+        };
+
+        mediaRecorder.onresume = () => {
+            console.log("MediaRecorder resumed");
+        };
+
+        // Start recording
+        mediaRecorder.start(100); // Capture every 100ms for smoother pause/resume
+        startTime = Date.now();
+        pauseTime = 0;
+        totalPauseDuration = 0; // Reset total pause duration
+        timerInterval = setInterval(updateTimer, 1000);
+
+        startBtn.disabled = true;
+        pauseBtn.disabled = false;
+        stopBtn.disabled = false;
+        showNotification("Recording started");
+    } catch (error) {
+        console.error("Error starting recording:", error);
+        showNotification(`Error starting recording: ${error.message}`, "error");
+        resetControls();
     }
-
-    if (!screenStream && !micStream) {
-      throw new Error("No media sources selected");
-    }
-
-    // Show countdown if enabled
-    if (countdownSeconds > 0) {
-      await showCountdown();
-    }
-
-    const tracks = [
-      ...(screenStream ? screenStream.getTracks() : []),
-      ...(micStream ? micStream.getTracks() : []),
-    ];
-
-    stream = new MediaStream(tracks);
-    preview.srcObject = stream;
-
-    // Calculate bitrate based on quality setting
-    const qualityMultiplier = parseInt(qualitySlider.value) / 100;
-    const videoBitsPerSecond = Math.floor(2500000 * qualityMultiplier);
-    const audioBitsPerSecond = Math.floor(128000 * qualityMultiplier);
-
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream, {
-      videoBitsPerSecond,
-      audioBitsPerSecond,
-    });
-
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) {
-        recordedChunks.push(e.data);
-      }
-    };
-
-    mediaRecorder.onstart = () => {
-      ipcRenderer.send("recording-status-changed", true);
-    };
-
-    mediaRecorder.onstop = async () => {
-      ipcRenderer.send("recording-status-changed", false);
-      const blob = new Blob(recordedChunks, {
-        type: "video/mp4",
-      });
-
-      const buffer = Buffer.from(await blob.arrayBuffer());
-      const filePath = await ipcRenderer.invoke("save-file", buffer);
-
-      if (filePath) {
-        store.set("lastRecordingPath", filePath);
-        showNotification("Recording saved successfully!");
-      }
-
-      stream.getTracks().forEach((track) => track.stop());
-      preview.srcObject = null;
-      recordedChunks = [];
-      resetControls();
-    };
-
-    // Request data every 100ms when paused to ensure we don't lose frames
-    mediaRecorder.onpause = () => {
-      console.log("MediaRecorder paused");
-      mediaRecorder.requestData();
-    };
-
-    mediaRecorder.onresume = () => {
-      console.log("MediaRecorder resumed");
-    };
-
-    // Start recording
-    mediaRecorder.start(100); // Capture every 100ms for smoother pause/resume
-    startTime = Date.now();
-    pauseTime = 0;
-    totalPauseDuration = 0; // Reset total pause duration
-    timerInterval = setInterval(updateTimer, 1000);
-
-    startBtn.disabled = true;
-    pauseBtn.disabled = false;
-    stopBtn.disabled = false;
-    showNotification("Recording started");
-  } catch (error) {
-    console.error("Error starting recording:", error);
-    showNotification(`Error starting recording: ${error.message}`, "error");
-    resetControls();
-  }
 }
 
 // Pause/Resume recording
@@ -374,6 +536,10 @@ function resetControls() {
   isPaused = false;
   pauseTime = 0;
   totalPauseDuration = 0;
+  selectedSource = null;
+  selectedRegion = null;
+  recordingMode = null;
+  updateRecordingModeInfo();
   if (timerInterval) {
     clearInterval(timerInterval);
     timerInterval = null;
@@ -584,4 +750,141 @@ function handleMenuClick(menuId, event) {
     Math.round(rect.left),
     Math.round(rect.bottom)
   );
+}
+
+const windowSelectionDialog = document.getElementById("window-selection-dialog");
+const windowList = document.getElementById("window-list");
+let selectedSource = null;
+
+// Add window selection functions
+function showWindowSelectionDialog() {
+  windowSelectionDialog.classList.add("show");
+  populateWindowList();
+}
+
+function closeWindowSelectionDialog() {
+  windowSelectionDialog.classList.remove("show");
+  updateRecordingModeInfo();
+}
+
+async function populateWindowList() {
+  try {
+    const sources = await ipcRenderer.invoke("get-sources");
+    windowList.innerHTML = "";
+
+    // Filter out screen sources and sort by name
+    const windowSources = sources
+      .filter(source => !source.id.startsWith("screen:") && source.name !== "Entire Screen")
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    windowSources.forEach((source) => {
+      const windowItem = document.createElement("div");
+      windowItem.className = "window-item";
+      windowItem.dataset.sourceId = source.id;
+
+      const thumbnail = document.createElement("img");
+      thumbnail.className = "window-thumbnail";
+      thumbnail.src = source.thumbnail.toDataURL();
+
+      const title = document.createElement("div");
+      title.className = "window-title";
+      title.textContent = source.name;
+
+      windowItem.appendChild(thumbnail);
+      windowItem.appendChild(title);
+
+      windowItem.addEventListener("click", () => {
+        document.querySelectorAll(".window-item").forEach(item => item.classList.remove("selected"));
+        windowItem.classList.add("selected");
+        selectedSource = source;
+        closeWindowSelectionDialog();
+      });
+
+      windowList.appendChild(windowItem);
+    });
+
+    if (windowSources.length === 0) {
+      const noWindows = document.createElement("div");
+      noWindows.className = "no-windows";
+      noWindows.textContent = "No windows available for recording";
+      windowList.appendChild(noWindows);
+    }
+  } catch (error) {
+    console.error("Error populating window list:", error);
+    showNotification("Error loading windows", "error");
+  }
+}
+
+// Add window selection dialog event listeners
+windowSelectionDialog.addEventListener("click", (e) => {
+  if (e.target === windowSelectionDialog) {
+    closeWindowSelectionDialog();
+  }
+});
+
+// Add event listeners for recording mode
+recordingModeBtn.addEventListener("click", toggleDropdown);
+
+document.addEventListener("click", (e) => {
+    if (!recordingModeBtn.parentElement.contains(e.target)) {
+        closeDropdown();
+    }
+});
+
+document.querySelectorAll(".dropdown-item").forEach((item) => {
+    item.addEventListener("click", () => {
+        recordingMode = item.dataset.mode;
+        closeDropdown();
+        
+        if (recordingMode === "window") {
+            showWindowSelectionDialog();
+        } else if (recordingMode === "region") {
+            showRegionSelection();
+        }
+        
+        updateRecordingModeInfo();
+    });
+});
+
+// Add back the updateRecordingModeInfo function
+function updateRecordingModeInfo() {
+    if (!recordingMode) {
+        recordingModeText.textContent = "Select recording mode";
+        recordingModeBtn.innerHTML = `
+            <span class="segoe-icon">&#xE7C4;</span>
+            Choose Recording Screen
+            <span class="segoe-icon dropdown-arrow">&#xE70D;</span>
+        `;
+        return;
+    }
+
+    if (recordingMode === "fullscreen") {
+        recordingModeText.textContent = "Full Screen";
+        recordingModeBtn.innerHTML = `
+            <span class="segoe-icon">&#xE740;</span>
+            Full Screen
+            <span class="segoe-icon dropdown-arrow">&#xE70D;</span>
+        `;
+    } else if (recordingMode === "window" && selectedSource) {
+        recordingModeText.textContent = `Window: ${selectedSource.name}`;
+        recordingModeBtn.innerHTML = `
+            <span class="segoe-icon">&#xE714;</span>
+            ${selectedSource.name}
+            <span class="segoe-icon dropdown-arrow">&#xE70D;</span>
+        `;
+    } else if (recordingMode === "region" && selectedRegion) {
+        recordingModeText.textContent = `Region: ${selectedRegion.width}×${selectedRegion.height}`;
+        recordingModeBtn.innerHTML = `
+            <span class="segoe-icon">&#xE7C8;</span>
+            Selected Region
+            <span class="segoe-icon dropdown-arrow">&#xE70D;</span>
+        `;
+    } else {
+        recordingModeText.textContent = recordingMode === "region" ? "Select a region" : "Specific Window";
+        recordingModeBtn.innerHTML = `
+            <span class="segoe-icon">${recordingMode === "region" ? "&#xE7C8;" : "&#xE714;"}</span>
+            ${recordingMode === "region" ? "Select Region" : "Specific Window"}
+            <span class="segoe-icon dropdown-arrow">&#xE70D;</span>
+        `;
+    }
 }

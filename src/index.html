@@ -73,7 +73,7 @@
                     </div>
                     <div class="developer-info">
                         <h4>Developer</h4>
-                        <p>Arman Mustamandyar</p>
+                        <p>Arman</p>
                         <div class="contact-info">
                             <div class="contact-item">
                                 <span class="segoe-icon">&#xE715;</span>
@@ -84,6 +84,22 @@
                                 <a href="#" onclick="openGitHub()">github.com/Armancollab</a>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="window-selection-dialog" class="dialog-overlay">
+            <div class="dialog-content">
+                <div class="dialog-header">
+                    <h2>Select Window to Record</h2>
+                    <button class="dialog-close" onclick="closeWindowSelectionDialog()">
+                        <span class="segoe-icon">&#xE711;</span>
+                    </button>
+                </div>
+                <div class="dialog-body">
+                    <div id="window-list" class="window-list">
+                        <!-- Windows will be populated here -->
                     </div>
                 </div>
             </div>
@@ -102,6 +118,27 @@
 
         <div id="recorder-panel" class="glass-panel">
             <div class="controls">
+                <div class="dropdown">
+                    <button id="recordingModeBtn" class="btn secondary">
+                        <span class="segoe-icon">&#xE7C4;</span>
+                        Choose Recording Screen
+                        <span class="segoe-icon dropdown-arrow">&#xE70D;</span>
+                    </button>
+                    <div class="dropdown-content">
+                        <div class="dropdown-item" data-mode="fullscreen">
+                            <span class="segoe-icon">&#xE740;</span>
+                            Full Screen
+                        </div>
+                        <div class="dropdown-item" data-mode="window">
+                            <span class="segoe-icon">&#xE714;</span>
+                            Specific Window
+                        </div>
+                        <div class="dropdown-item" data-mode="region">
+                            <span class="segoe-icon">&#xE7C8;</span>
+                            Rectangular Area
+                        </div>
+                    </div>
+                </div>
                 <button id="startBtn" class="btn">
                     <span class="segoe-icon">&#xE7C8;</span>
                     Start Recording
@@ -118,7 +155,13 @@
             <div class="status">
                 <span id="timer" class="timer">00:00</span>
             </div>
-            <video id="preview" autoplay muted></video>
+            <div class="preview-container">
+                <div class="recording-mode-info">
+                    <span class="segoe-icon">&#xE7C4;</span>
+                    <span id="recordingModeText">Select recording mode</span>
+                </div>
+                <video id="preview" autoplay muted></video>
+            </div>
         </div>
 
         <div id="settings-panel" class="glass-panel settings-panel">

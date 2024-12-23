@@ -9,6 +9,7 @@ const {
   nativeTheme,
   Tray,
   session,
+  screen,
 } = require("electron");
 const path = require("path");
 const Store = require("electron-store");
@@ -20,6 +21,12 @@ const store = new Store();
 let mainWindow;
 let tray = null;
 let isRecording = false;
+let regionWindow = null;
+let updateDownloaded = false;
+
+// Configure auto updater
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
 
 function createTray() {
   try {
@@ -169,29 +176,31 @@ function createWindow() {
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 
-  // Send menu template to renderer for custom menu
-  mainWindow.webContents.on("dom-ready", () => {
-    mainWindow.webContents.send("init-window-controls");
+  mainWindow.loadFile("src/index.html");
+
+  // Handle window state events
+  mainWindow.on("maximize", () => {
+    mainWindow.webContents.send("window-maximized", true);
   });
 
-  mainWindow.on("close", async (event) => {
-    if (!app.isQuitting && isRecording) {
-      event.preventDefault();
-      const choice = await dialog.showMessageBox(mainWindow, {
-        type: "question",
-        buttons: ["Yes", "No"],
-        title: "Confirm",
-        message: "Recording is in progress. Are you sure you want to quit?",
-      });
+  mainWindow.on("unmaximize", () => {
+    mainWindow.webContents.send("window-maximized", false);
+  });
 
-      if (choice.response === 0) {
-        app.isQuitting = true;
-        mainWindow.webContents.send("force-stop-recording");
-        mainWindow.close();
-      }
+  mainWindow.on("ready-to-show", () => {
+    mainWindow.show();
+  });
+
+  // Handle window close to tray
+  mainWindow.on("close", (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      return false;
     }
   });
 
+  // Add window control handlers
   ipcMain.on("minimize-window", () => {
     mainWindow.minimize();
   });
@@ -227,30 +236,6 @@ function createWindow() {
       mainWindow.close();
     }
   });
-
-  // Handle window minimize to tray
-  mainWindow.on("minimize", (event) => {
-    // Allow normal minimize behavior
-  });
-
-  // Handle window close to tray
-  mainWindow.on("close", (event) => {
-    if (!app.isQuitting) {
-      event.preventDefault();
-      mainWindow.hide();
-    }
-    return false;
-  });
-
-  mainWindow.loadFile("src/index.html");
-
-  // Check for updates when app starts
-  autoUpdater.checkForUpdatesAndNotify();
-
-  // Handle dark/light mode
-  if (nativeTheme.shouldUseDarkColors) {
-    mainWindow.setBackgroundColor("#202020");
-  }
 }
 
 // Modify the app ready handler
@@ -262,7 +247,22 @@ app.whenReady().then(() => {
 
   createWindow();
   createTray();
+
+  // Check for updates silently
+  checkForUpdates();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
 });
+
+function checkForUpdates() {
+  autoUpdater.checkForUpdates().catch(err => {
+    console.error('Error checking for updates:', err);
+  });
+}
 
 // Add session cleanup on quit
 app.on("quit", () => {
@@ -301,59 +301,60 @@ ipcMain.handle("open-last-recording", async () => {
   return false;
 });
 
-// Auto Updater events
-autoUpdater.on("checking-for-update", () => {
-  dialog.showMessageBox(mainWindow, {
-    type: "info",
-    title: "Checking for Updates",
-    message: "Checking for updates...",
-    buttons: ["OK"],
-  });
+// Remove the old auto-updater events and replace with new ones
+autoUpdater.on('checking-for-update', () => {
+  console.log('Checking for updates...');
 });
 
-autoUpdater.on("update-available", (info) => {
-  dialog.showMessageBox(mainWindow, {
-    type: "info",
-    title: "Update Available",
-    message:
-      "A new version is available. The update will be downloaded automatically.",
-    detail: `New version: ${info.version}`,
-    buttons: ["OK"],
-  });
+autoUpdater.on('update-available', (info) => {
+  console.log('Update available:', info.version);
 });
 
-autoUpdater.on("update-not-available", () => {
-  dialog.showMessageBox(mainWindow, {
-    type: "info",
-    title: "No Updates",
-    message: "You are using the latest version.",
-    buttons: ["OK"],
-  });
+autoUpdater.on('update-not-available', () => {
+  console.log('No updates available');
 });
 
-autoUpdater.on("error", (err) => {
-  dialog.showErrorBox("Error", "Error while checking for updates: " + err);
+autoUpdater.on('error', (err) => {
+  console.error('Error in auto-updater:', err);
 });
 
-autoUpdater.on("download-progress", (progressObj) => {
+autoUpdater.on('download-progress', (progressObj) => {
   let message = `Download speed: ${progressObj.bytesPerSecond}`;
   message = `${message} - Downloaded ${progressObj.percent}%`;
   message = `${message} (${progressObj.transferred}/${progressObj.total})`;
-  mainWindow.webContents.send("download-progress", message);
+  mainWindow.webContents.send('update-progress', progressObj.percent);
 });
 
-autoUpdater.on("update-downloaded", () => {
-  dialog
-    .showMessageBox(mainWindow, {
-      type: "info",
-      title: "Update Ready",
-      message:
-        "Update downloaded. The application will restart to install the update.",
-      buttons: ["Restart"],
-    })
-    .then(() => {
-      autoUpdater.quitAndInstall();
+autoUpdater.on('update-downloaded', () => {
+  updateDownloaded = true;
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'Update Ready',
+    message: 'A new version has been downloaded. Would you like to install it now?',
+    buttons: ['Install Now', 'Install Later'],
+    defaultId: 0
+  }).then(result => {
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall(false, true);
+    }
+  });
+});
+
+// Add update reminder on app launch
+app.on('ready', () => {
+  if (updateDownloaded) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Pending Update',
+      message: 'An update is ready to be installed. Would you like to install it now?',
+      buttons: ['Install Now', 'Install Later'],
+      defaultId: 0
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall(false, true);
+      }
     });
+  }
 });
 
 // Configure auto updater
@@ -370,19 +371,13 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
 // Handle get sources
 ipcMain.handle("get-sources", async () => {
   try {
     const sources = await desktopCapturer.getSources({
       types: ["screen", "window"],
-      thumbnailSize: { width: 0, height: 0 },
-      fetchWindowIcons: false,
+      thumbnailSize: { width: 320, height: 180 },
+      fetchWindowIcons: true,
     });
     return sources;
   } catch (error) {
@@ -492,4 +487,81 @@ ipcMain.on("show-menu", (event, menuId, x, y) => {
     const menu = Menu.buildFromTemplate(menuTemplate);
     menu.popup({ window: mainWindow, x, y });
   }
+});
+
+// Add region window creation function
+function createRegionWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const displays = screen.getAllDisplays();
+  let totalWidth = 0;
+  let maxHeight = 0;
+
+  // Calculate total width and maximum height of all displays
+  displays.forEach(display => {
+    totalWidth += display.bounds.width;
+    maxHeight = Math.max(maxHeight, display.bounds.height);
+  });
+
+  regionWindow = new BrowserWindow({
+    width: totalWidth,
+    height: maxHeight,
+    x: 0,
+    y: 0,
+    transparent: true,
+    frame: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    fullscreen: true,
+    resizable: false, // Disable window resizing
+    movable: false,  // Disable window moving
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    type: 'desktop', // This makes it appear above everything
+  });
+
+  // Prevent window resizing
+  regionWindow.setMinimumSize(totalWidth, maxHeight);
+  regionWindow.setMaximumSize(totalWidth, maxHeight);
+
+  regionWindow.setIgnoreMouseEvents(false);
+  regionWindow.setAlwaysOnTop(true, 'screen-saver'); // Highest level
+  regionWindow.setVisibleOnAllWorkspaces(true);
+  regionWindow.loadFile('src/region.html');
+
+  regionWindow.on('closed', () => {
+    regionWindow = null;
+  });
+}
+
+// Add IPC handlers for region selection
+ipcMain.on('show-region-selector', () => {
+  if (!regionWindow) {
+    createRegionWindow();
+  }
+});
+
+ipcMain.on('region-selected', (event, region) => {
+  mainWindow.webContents.send('region-selected', region);
+  if (regionWindow) {
+    regionWindow.close();
+    regionWindow = null;
+  }
+});
+
+ipcMain.on('cancel-region-selection', () => {
+  if (regionWindow) {
+    regionWindow.close();
+    regionWindow = null;
+  }
+});
+
+// Add display metrics handler
+ipcMain.handle("get-display-metrics", () => {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  return {
+    width: primaryDisplay.size.width,
+    height: primaryDisplay.size.height
+  };
 });

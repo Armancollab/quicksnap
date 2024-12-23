@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Select Region</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: rgba(0, 0, 0, 0.3);
+            user-select: none;
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .region-selection-info {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+            font-family: 'Segoe UI', sans-serif;
+            z-index: 999999;
+        }
+
+        .region-selection-box {
+            position: fixed;
+            border: 2px solid #60CDFF;
+            background-color: rgba(96, 205, 255, 0.1);
+            display: none;
+            z-index: 999999;
+        }
+
+        .region-selection-size {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #60CDFF;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 2px;
+            font-size: 12px;
+            white-space: nowrap;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .region-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: transparent;
+            z-index: 999998;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="region-overlay"></div>
+    <div class="region-selection-info">
+        Click and drag to select a region
+    </div>
+    <div class="region-selection-box">
+        <div class="region-selection-size"></div>
+    </div>
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        const regionBox = document.querySelector('.region-selection-box');
+        const sizeDisplay = document.querySelector('.region-selection-size');
+        let isSelecting = false;
+        let startPoint = { x: 0, y: 0 };
+
+        function updateRegionBox(e) {
+            const width = Math.abs(e.clientX - startPoint.x);
+            const height = Math.abs(e.clientY - startPoint.y);
+            const left = Math.min(e.clientX, startPoint.x);
+            const top = Math.min(e.clientY, startPoint.y);
+
+            regionBox.style.left = `${left}px`;
+            regionBox.style.top = `${top}px`;
+            regionBox.style.width = `${width}px`;
+            regionBox.style.height = `${height}px`;
+            sizeDisplay.textContent = `${width}px × ${height}px`;
+        }
+
+        document.addEventListener('mousedown', (e) => {
+            isSelecting = true;
+            startPoint = { x: e.clientX, y: e.clientY };
+            regionBox.style.display = 'block';
+            updateRegionBox(e);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isSelecting) {
+                updateRegionBox(e);
+            }
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (isSelecting) {
+                isSelecting = false;
+                const width = Math.abs(e.clientX - startPoint.x);
+                const height = Math.abs(e.clientY - startPoint.y);
+
+                if (width < 50 || height < 50) {
+                    ipcRenderer.send('cancel-region-selection');
+                    return;
+                }
+
+                const region = {
+                    x: Math.min(e.clientX, startPoint.x),
+                    y: Math.min(e.clientY, startPoint.y),
+                    width,
+                    height
+                };
+
+                ipcRenderer.send('region-selected', region);
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                ipcRenderer.send('cancel-region-selection');
+            }
+        });
+    </script>
+</body>
+
+</html>
